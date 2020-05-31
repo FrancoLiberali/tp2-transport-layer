@@ -9,7 +9,7 @@ El objetivo del trabajo práctico es implementar un sistema de almacenamiento de
 > + **Comcast** instalado:
 >   1. Se instala a través de **Go** ejecutando  
 >`$ go get github.com/tylertreat/comcast`
->   2. Agregar la carpeta que contiene los paquetes descargados por **Go** (i.e: comecast) al **PATH**:  
+>   2. Agregar la carpeta que contiene los paquetes descargados por **Go** (i.e: comcast) al **PATH**:  
 >`$ echo "export PATH=\$PATH:~/go/bin" >> ~/.profile` *(en linux)*.
 >   3. Probar que todo haya funcionado ejecutando `$ comcast --help`. 
 
