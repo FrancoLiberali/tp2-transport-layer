@@ -3,6 +3,16 @@
 
 El objetivo del trabajo práctico es implementar un sistema de almacenamiento de archivos en la nube utilizando los protocolos de capa de transporte TCP y UDP. Este repositorio facilita a los grupos un esqueleto con los comandos que el sistema debe exponer.
 
+> #### Pre-requisitos:
+> + Python 3.6 recomendado *[virtualenv](https://virtualenv.pypa.io/en/latest/installation.html "Instalación venv")*.
+> + **[Go](https://golang.org/dl/#featured "Descargar Go")** instalado globalmente (asegurarse que su binario quede en el **PATH**).
+> + **Comcast** instalado:
+>   1. Se instala a través de **Go** ejecutando  
+>`$ go get github.com/tylertreat/comcast`
+>   2. Agregar la carpeta que contiene los paquetes descargados por **Go** (i.e: comecast) al **PATH**:  
+>`$ echo "export PATH=\$PATH:~/go/bin" >> ~/.profile` *(en linux)*.
+>   3. Probar que todo haya funcionado ejecutando `$ comcast --help`. 
+
 ## Comandos
 
 Este repositorio expone los 3 comandos descriptos en el enunciado del TP, con todos los parametros requeridos.
