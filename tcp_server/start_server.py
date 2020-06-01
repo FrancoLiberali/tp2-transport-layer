@@ -1,4 +1,10 @@
+from tcp_server.server import TCPServer
+
+
 def start_server(server_address, storage_dir):
-    # TODO: Implementar TCP server
-    print('TCP: start_server({}, {})'.format(server_address, storage_dir))
-    pass
+    server = TCPServer(server_address, storage_dir)
+
+    try:
+        server.start()
+    except KeyboardInterrupt:
+        server.shutdown()

@@ -1,4 +1,5 @@
+from tcp_client.file_uploader import FileUploader
+
 def upload_file(server_address, src, name):
-    # TODO: Implementar TCP upload_file client
-    print('TCP: upload_file({}, {}, {})'.format(server_address, src, name))
-    pass
+    fu = FileUploader(server_address, src, name)
+    fu.upload()
