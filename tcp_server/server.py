@@ -5,7 +5,7 @@ class TCPServer:
     def __init__(self, server_addr, storage_path, operations_chain):
         self.server_addr = server_addr
         self.storage_path = os.path.expandvars(storage_path)
-        self.clients = []
+        self.threads = []
         self.running = False
         self.sock = socket.socket()
         self.operations_chain = operations_chain
@@ -22,13 +22,15 @@ class TCPServer:
 
         while self.running:
             conn, addr = self.sock.accept()
-            self.clients.append((conn, addr))
             print(f'Connected -> address: {addr}')
-            self.operations_chain.delegate(conn, addr, self.storage_path)
+            threaded_op = self.operations_chain.delegate(conn, addr, self.storage_path)
+            self.threads.append(threaded_op)
 
     def shutdown(self):
         self.running = False
+        print(f'\nShutting down gracefully...\n')
 
-        for conn, _ in self.clients:
-            conn.close()
+        for thread in self.threads:
+            thread.join()
+
         self.sock.close()

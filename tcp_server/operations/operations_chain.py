@@ -11,4 +11,6 @@ class OperationsChain:
 
         for Operation in self.operations:
             if Operation.understands(op_code):
-                Operation(conn, client_addr, storage_path, *rest).start()  # Starts operation in new thread
+                operation = Operation(conn, client_addr, storage_path, *rest)
+                operation.start()  # Starts operation in new thread
+                return operation
