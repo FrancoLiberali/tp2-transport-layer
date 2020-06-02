@@ -39,8 +39,8 @@ Para poder simular distintas condiciones de red vamos a utilizar la herramienta 
 
 En nuestro caso, vamos a simular una tasa de perdida de paquetes del 10% para poder ver como se comportan las distintas soluciones. Para hacer esto, corremos:
 
-    comcast --device=lo0 --packet-loss=10%
+    comcast --device=lo --packet-loss=10%
 
 Una vez que terminamos con la simulación, debemos correr el siguiente comando para desactivar las reglas setteadas:
 
-    comcast --stop
+    comcast --stop --device=lo
