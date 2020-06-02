@@ -1,5 +1,10 @@
-from tcp_client.file_uploader import FileUploader
+from tcp_client.file_upload import FileUpload
 
 def upload_file(server_address, src, name):
-    fu = FileUploader(server_address, src, name)
-    fu.upload()
+    try:
+        fu = FileUpload(server_address, src, name)
+        fu.upload()
+    except RuntimeError as e:
+        print(str(e))
+    except (KeyboardInterrupt, SystemExit):
+        print(f'\nUpload de {name} cancelado')

@@ -1,7 +1,8 @@
 import threading
+from common.operations import UPLOAD
 
 class UploadOperation(threading.Thread):
-    OP_CODE = 'upload'
+    OP_CODE = UPLOAD
 
     def __init__(self, conn, client_addr, storage_path, file_save_name, file_size, chunk_size):
         super().__init__()
@@ -24,6 +25,10 @@ class UploadOperation(threading.Thread):
         with open(path, 'wb') as f:
             while bytes_received < self.file_size:
                 chunk = self.conn.recv(self.chunk_size)
+
+                if len(chunk) == 0:     # Conn was closed by client prematurely
+                    break
+
                 bytes_received += len(chunk)
                 f.write(chunk)
 
