@@ -1,5 +1,5 @@
-import socket
 import os.path
+from common.safe_socket import SafeSocket
 
 class TCPServer:
     def __init__(self, server_addr, storage_path, operations_chain):
@@ -9,10 +9,10 @@ class TCPServer:
         self.operations_chain = operations_chain
 
         try:
-            self.sock = socket.socket()
+            self.sock = SafeSocket.socket()
             # The SO_REUSEADDR socket option is set in order to immediately reuse previous
             # sockets which were bound on the same address and remained in TIME_WAIT state.
-            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            # self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.sock.bind(self.server_addr)
         except OSError as e:
             self.__close_connection()

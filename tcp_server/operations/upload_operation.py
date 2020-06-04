@@ -11,7 +11,7 @@ class UploadOperation(threading.Thread):
         self.storage_path = storage_path
         self.file_save_name = file_save_name
         self.file_size = int(file_size)
-        self.chunk_size = int(chunk_size)
+        self.chunk_size = int(chunk_size)   # ToDo: Remove this
 
     @staticmethod
     def understands(op_code):
@@ -24,10 +24,10 @@ class UploadOperation(threading.Thread):
 
         with open(path, 'wb') as f:
             while bytes_received < self.file_size:
-                chunk = self.conn.recv(self.chunk_size)
+                chunk = self.conn.recv()
 
                 if len(chunk) == 0:     # Conn was closed by client prematurely
-                    break
+                    break       # ToDo: server should clean up file in this case
 
                 bytes_received += len(chunk)
                 f.write(chunk)
