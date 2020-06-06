@@ -1,9 +1,16 @@
 from abc import ABC, abstractmethod
 import socket
 
+def _get_max_representable_number(number_of_bytes, byteorder='little'):
+    max_number = int(-1).to_bytes(number_of_bytes, byteorder=byteorder, signed=True)
+    return int.from_bytes(max_number, byteorder=byteorder, signed=False)
+
 class SafeSocket(ABC):
     TCP = socket.SOCK_STREAM
     UDP = socket.SOCK_DGRAM
+    MSG_LEN_REPR = 2    # number of bytes used to represent the length of a message
+    MAX_MSG_LEN = _get_max_representable_number(MSG_LEN_REPR)
+    DEFAULT_READ_BUFF = 2048
 
     def __init__(self):
         self.sock = self._make_socket()
@@ -41,6 +48,33 @@ class SafeSocket(ABC):
         safe_sock.sock = sock       # Set it's underlying socket
         return safe_sock
 
+    # noinspection PyMethodMayBeStatic
+    def _check_conn(self, bytes_handled):
+        if bytes_handled == 0:
+            raise ConnectionBroken('Connection closed by peer')
+
+    # noinspection PyMethodMayBeStatic
+    def _as_bytes(self, data):
+        if isinstance(data, bytes):
+            pass
+        elif isinstance(data, str):
+            data = data.encode()
+        else:
+            raise TypeError('Data must be bytes or str')
+
+        if len(data) > self.MAX_MSG_LEN:
+            raise ValueError(f'Data must be at most {self.MAX_MSG_LEN} bytes. Consider splitting into chunks.')
+
+        return data
+
+    # noinspection PyMethodMayBeStatic
+    def _encode_length(self, datalength):
+        return datalength.to_bytes(self.MSG_LEN_REPR, byteorder='little', signed=False)
+
+    # noinspection PyMethodMayBeStatic
+    def _decode_length(self, lengthdata):
+        return int.from_bytes(lengthdata, byteorder='little', signed=False)
+
     @abstractmethod
     def _make_underlying_socket(self):
         pass
@@ -59,11 +93,34 @@ class SafeSocketTCP(SafeSocket):
         return socket.socket(type=self.TCP)
 
     def send(self, data):
-        return self.sock.send(data)     # FixMe: actually make this SAFE
+        data = self._as_bytes(data)
+        datalength = len(data)
+        data = self._encode_length(datalength) + data   # concatenate msg length to start of data
+        datalength = len(data)  # update length with added bytes
+
+        total_bytes_sent = 0
+        while total_bytes_sent < datalength:
+            bytes_sent = self.sock.send(data[total_bytes_sent:])
+            total_bytes_sent += bytes_sent
+            self._check_conn(bytes_sent)
+
+        return total_bytes_sent
 
     def recv(self):
-        chunk = 4096    # FixMe: actually make this SAFE
-        return self.sock.recv(chunk)
+        # Reads first 2 bytes with length of message
+        datalength = self.sock.recv(self.MSG_LEN_REPR)  # FixMe: Make this read safe with a while read
+        datalength = self._decode_length(datalength)
+        chunks = []
+        total_bytes_recvd = 0
+
+        while total_bytes_recvd < datalength:
+            bufsize = min(datalength - total_bytes_recvd, self.DEFAULT_READ_BUFF)
+            chunk = self.sock.recv(bufsize)
+            self._check_conn(len(chunk))
+            chunks.append(chunk)
+            total_bytes_recvd += len(chunk)
+
+        return b''.join(chunks)
 
 class SafeSocketUDP(SafeSocket):
 
@@ -75,3 +132,6 @@ class SafeSocketUDP(SafeSocket):
 
     def recv(self):
         raise NotImplementedError('UDP SafeSocket not implemented')
+
+class ConnectionBroken(RuntimeError):
+    pass

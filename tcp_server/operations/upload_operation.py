@@ -1,39 +1,41 @@
+import os
 import threading
 from common.operations import UPLOAD
+from common.safe_socket import ConnectionBroken
 
 class UploadOperation(threading.Thread):
     OP_CODE = UPLOAD
 
-    def __init__(self, conn, client_addr, storage_path, file_save_name, file_size, chunk_size):
+    def __init__(self, conn, client_addr, storage_path, file_save_name, file_size):
         super().__init__()
         self.conn = conn
         self.client_addr = client_addr
         self.storage_path = storage_path
         self.file_save_name = file_save_name
         self.file_size = int(file_size)
-        self.chunk_size = int(chunk_size)   # ToDo: Remove this
+        self.file_path = f'{self.storage_path}/{self.file_save_name}'
 
     @staticmethod
     def understands(op_code):
         return op_code == UploadOperation.OP_CODE
 
     def run(self):
-        self.conn.send(UploadOperation.OP_CODE.encode())    # signals the client to start upload
-        path = f'{self.storage_path}/{self.file_save_name}'
-        bytes_received = 0
+        try:
+            self.conn.send(UploadOperation.OP_CODE)    # signals the client to start upload
+            bytes_received = 0
 
-        with open(path, 'wb') as f:
-            while bytes_received < self.file_size:
-                chunk = self.conn.recv()
+            with open(self.file_path, 'wb') as f:
+                while bytes_received < self.file_size:
+                    chunk = self.conn.recv()
+                    bytes_received += len(chunk)
+                    f.write(chunk)
 
-                if len(chunk) == 0:     # Conn was closed by client prematurely
-                    break       # ToDo: server should clean up file in this case
-
-                bytes_received += len(chunk)
-                f.write(chunk)
-
-        print(f'SAVED FILE -> {self.file_save_name}')
-        print(f'Path: {path}, {bytes_received} of {self.file_size} received.')
-        self.conn.send(str(bytes_received).encode())
-        self.conn.close()
+            print(f'SAVED FILE -> {self.file_save_name}')
+            print(f'Path: {self.file_path}, {bytes_received} of {self.file_size} received.')
+            self.conn.send(str(bytes_received))
+        except ConnectionBroken:
+            os.path.isfile(self.file_path) and os.remove(self.file_path)
+            print(f"Upload cancelled: cleaned up '{self.file_save_name}'")
+        finally:
+            self.conn.close()
 

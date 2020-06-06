@@ -7,4 +7,4 @@ def upload_file(server_address, src, name):
     except RuntimeError as e:
         print(str(e))
     except (KeyboardInterrupt, SystemExit):
-        print(f'\nUpload de {name} cancelado')
+        print(f"\nUpload of file '{name}' cancelled")

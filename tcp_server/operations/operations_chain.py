@@ -1,9 +1,16 @@
+from common.safe_socket import ConnectionBroken
+
 class OperationsChain:
     def __init__(self, *operations):
         self.operations = operations
 
     def delegate(self, conn, client_addr, storage_path):
-        init_msg = conn.recv().decode()   # FixMe: if len(init_msg) == 0, client closed conn prematurely
+        try:
+            init_msg = conn.recv().decode()
+        except ConnectionBroken:
+            conn.close()
+            return
+
         field_delimiter, fields_chunk = init_msg[0], init_msg[1:]
         fields = fields_chunk.split(field_delimiter)
         op_code, *rest = fields
