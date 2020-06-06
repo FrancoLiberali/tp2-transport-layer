@@ -1,5 +1,5 @@
 import os
-from common.operations import UPLOAD
+from common.operation_codes import UPLOAD
 from common.safe_socket import SafeSocket, ConnectionBroken
 
 class FileUpload:

@@ -8,8 +8,8 @@ def _get_max_representable_number(number_of_bytes, byteorder='little'):
 class SafeSocket(ABC):
     TCP = socket.SOCK_STREAM
     UDP = socket.SOCK_DGRAM
-    MSG_LEN_REPR = 2    # number of bytes used to represent the length of a message
-    MAX_MSG_LEN = _get_max_representable_number(MSG_LEN_REPR)
+    MSG_LEN_REPR_BYTES = 2    # number of bytes used to represent the length of a message
+    MAX_MSG_LEN = _get_max_representable_number(MSG_LEN_REPR_BYTES)
     DEFAULT_READ_BUFF = 2048
 
     def __init__(self):
@@ -69,7 +69,7 @@ class SafeSocket(ABC):
 
     # noinspection PyMethodMayBeStatic
     def _encode_length(self, datalength):
-        return datalength.to_bytes(self.MSG_LEN_REPR, byteorder='little', signed=False)
+        return datalength.to_bytes(self.MSG_LEN_REPR_BYTES, byteorder='little', signed=False)
 
     # noinspection PyMethodMayBeStatic
     def _decode_length(self, lengthdata):
@@ -107,14 +107,16 @@ class SafeSocketTCP(SafeSocket):
         return total_bytes_sent
 
     def recv(self):
-        # Reads first 2 bytes with length of message
-        datalength = self.sock.recv(self.MSG_LEN_REPR)  # FixMe: Make this read safe with a while read
+        datalength = self.__read_safely(self.MSG_LEN_REPR_BYTES)   # Reads first 2 bytes with length of message
         datalength = self._decode_length(datalength)
+        return self.__read_safely(datalength)
+
+    def __read_safely(self, length):
         chunks = []
         total_bytes_recvd = 0
 
-        while total_bytes_recvd < datalength:
-            bufsize = min(datalength - total_bytes_recvd, self.DEFAULT_READ_BUFF)
+        while total_bytes_recvd < length:
+            bufsize = min(length - total_bytes_recvd, self.DEFAULT_READ_BUFF)
             chunk = self.sock.recv(bufsize)
             self._check_conn(len(chunk))
             chunks.append(chunk)
@@ -127,7 +129,7 @@ class SafeSocketUDP(SafeSocket):
     def _make_underlying_socket(self):
         return socket.socket(type=self.UDP)
 
-    def send(self, data):
+    def send(self, data, address=None):
         raise NotImplementedError('UDP SafeSocket not implemented')
 
     def recv(self):

@@ -1,7 +1,7 @@
 import os
 import threading
 from pathlib import Path
-from common.operations import UPLOAD
+from common.operation_codes import UPLOAD
 from common.safe_socket import ConnectionBroken
 
 class UploadOperation(threading.Thread):
