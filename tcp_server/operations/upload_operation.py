@@ -1,5 +1,6 @@
 import os
 import threading
+from pathlib import Path
 from common.operations import UPLOAD
 from common.safe_socket import ConnectionBroken
 
@@ -10,10 +11,10 @@ class UploadOperation(threading.Thread):
         super().__init__()
         self.conn = conn
         self.client_addr = client_addr
-        self.storage_path = storage_path
+        self.storage_path = Path(storage_path)  # Path works for windows and unix delimiters
         self.file_save_name = file_save_name
         self.file_size = int(file_size)
-        self.file_path = f'{self.storage_path}/{self.file_save_name}'
+        self.file_path = self.storage_path / self.file_save_name
 
     @staticmethod
     def understands(op_code):
