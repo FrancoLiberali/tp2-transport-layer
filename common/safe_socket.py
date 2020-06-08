@@ -164,8 +164,14 @@ class SafeSocketUDP(SafeSocket):
         while total_bytes_recvd < length:
             bufsize = min(length - total_bytes_recvd, self.DEFAULT_READ_BUFF)
             chunk, addr = self.sock.recvfrom(bufsize, socket.MSG_PEEK)
-            chunks.append(chunk)
-            total_bytes_recvd += len(chunk)
+            # the socket is not expecting to receive from someone in particular
+            # or received from the ip expected ([0] to not take in count the port from which the answer came from)
+            if not self.addr or self.addr[0] == addr[0]:
+                chunks.append(chunk)
+                total_bytes_recvd += len(chunk)
+            else:
+                # remove datagram from the udp buffer
+                self.sock.recvfrom(1)
         # remove datagram from the udp buffer unless flags have MSG_PEEK
         self.sock.recvfrom(1, *flags)
         return b''.join(chunks), addr
