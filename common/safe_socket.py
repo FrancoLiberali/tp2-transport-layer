@@ -30,7 +30,6 @@ class SafeSocket(ABC):
         datalength = len(data)
         data = self._encode_length(datalength) + data   # concatenate msg length to start of data
         datalength = len(data)  # update length with added bytes
-        print(f'send datalength: {datalength}')
 
         total_bytes_sent = 0
         while total_bytes_sent < datalength:
@@ -164,16 +163,11 @@ class SafeSocketUDP(SafeSocket):
         addr = None
         while total_bytes_recvd < length:
             bufsize = min(length - total_bytes_recvd, self.DEFAULT_READ_BUFF)
-            # the last read of this datagram
-            if length - total_bytes_recvd <= self.DEFAULT_READ_BUFF:
-                # remove datagram from the udp buffer
-                chunk, addr = self.sock.recvfrom(bufsize, *flags)
-            else:
-                # keep datagram in the udp buffet
-                chunk, addr = self.sock.recvfrom(bufsize, socket.MSG_PEEK)
-            self._check_conn(len(chunk))
+            chunk, addr = self.sock.recvfrom(bufsize, socket.MSG_PEEK)
             chunks.append(chunk)
             total_bytes_recvd += len(chunk)
+        # remove datagram from the udp buffer unless flags have MSG_PEEK
+        self.sock.recvfrom(1, *flags)
         return b''.join(chunks), addr
 
 class ConnectionBroken(RuntimeError):
