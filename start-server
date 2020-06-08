@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import argparse
-from tcp_server.start_server import start_server as start_server_tcp
-from udp_server.start_server import start_server as start_server_udp
-
+from server.start_server import start_server
+from server.tcp_server import TCPServer
+from server.udp_server import UDPServer
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -25,9 +25,9 @@ def main():
     server_address = (args.own_host, args.own_port)
 
     if args.protocol == "tcp":
-        start_server_tcp(server_address, args.storage_dir)
+        start_server(server_address, args.storage_dir, TCPServer)
     elif args.protocol == "udp":
-        start_server_udp(server_address, args.storage_dir)
+        start_server(server_address, args.storage_dir, UDPServer)
     else:
         raise Exception("protocolo invalido")
 
