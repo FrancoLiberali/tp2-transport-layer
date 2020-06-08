@@ -39,4 +39,3 @@ class UploadOperation(threading.Thread):
             print(f"Upload cancelled: cleaned up '{self.file_save_name}'")
         finally:
             self.conn.close()
-

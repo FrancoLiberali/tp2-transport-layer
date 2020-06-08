@@ -1,8 +1,6 @@
-from tcp_client.file_upload import FileUpload
-
-def upload_file(server_address, src, name):
+def upload_file(server_address, src, name, upload_class):
     try:
-        fu = FileUpload(server_address, src, name)
+        fu = upload_class(server_address, src, name)
         fu.upload()
     except RuntimeError as e:
         print(str(e))

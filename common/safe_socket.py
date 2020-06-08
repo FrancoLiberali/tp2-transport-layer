@@ -25,17 +25,19 @@ class SafeSocket(ABC):
     def bind(self, address):
         self.sock.bind(address)
 
-    def connect(self, address):
-        self.sock.connect(address)
+    def send(self, data):
+        data = self._as_bytes(data)
+        datalength = len(data)
+        data = self._encode_length(datalength) + data   # concatenate msg length to start of data
+        datalength = len(data)  # update length with added bytes
 
-    def listen(self):
-        self.sock.listen()
+        total_bytes_sent = 0
+        while total_bytes_sent < datalength:
+            bytes_sent = self._sock_send(data[total_bytes_sent:])
+            total_bytes_sent += bytes_sent
+            self._check_conn(bytes_sent)
 
-    def accept(self):
-        conn, addr = self.sock.accept()
-        safe_conn = self._make_socket(sock=conn)
-        safe_conn.sock = conn
-        return safe_conn, addr
+        return total_bytes_sent
 
     def close(self):
         self.sock.close()
@@ -80,7 +82,7 @@ class SafeSocket(ABC):
         pass
 
     @abstractmethod
-    def send(self, data):
+    def _sock_send(self, data):
         pass
 
     @abstractmethod
@@ -92,19 +94,20 @@ class SafeSocketTCP(SafeSocket):
     def _make_underlying_socket(self):
         return socket.socket(type=self.TCP)
 
-    def send(self, data):
-        data = self._as_bytes(data)
-        datalength = len(data)
-        data = self._encode_length(datalength) + data   # concatenate msg length to start of data
-        datalength = len(data)  # update length with added bytes
+    def connect(self, address):
+        self.sock.connect(address)
 
-        total_bytes_sent = 0
-        while total_bytes_sent < datalength:
-            bytes_sent = self.sock.send(data[total_bytes_sent:])
-            total_bytes_sent += bytes_sent
-            self._check_conn(bytes_sent)
+    def listen(self):
+        self.sock.listen()
 
-        return total_bytes_sent
+    def accept(self):
+        conn, addr = self.sock.accept()
+        safe_conn = self._make_socket(sock=conn)
+        safe_conn.sock = conn
+        return safe_conn, addr
+
+    def _sock_send(self, data):
+        return self.sock.send(data)
 
     def recv(self):
         datalength = self.__read_safely(self.MSG_LEN_REPR_BYTES)   # Reads first 2 bytes with length of message
@@ -126,14 +129,52 @@ class SafeSocketTCP(SafeSocket):
 
 class SafeSocketUDP(SafeSocket):
 
+    def __init__(self):
+        super().__init__()
+        self.addr = None
+
     def _make_underlying_socket(self):
         return socket.socket(type=self.UDP)
 
-    def send(self, data, address=None):
-        raise NotImplementedError('UDP SafeSocket not implemented')
+    def accept(self, addr, server_addr):
+        safe_conn = SafeSocket.socket(sock_type=SafeSocket.UDP)
+        safe_conn.addr = addr
+        return safe_conn
+
+    def connect(self, addr):
+        self.addr = addr
+
+    def _sock_send(self, data):
+        return self.sock.sendto(data, self.addr)
 
     def recv(self):
-        raise NotImplementedError('UDP SafeSocket not implemented')
+        # Reads first 2 bytes with length of message
+        # socket.MSG_PEEK indicates that the datagram readed should stay in the UDP buffer
+        datalength, addr = self.__read_safely(self.MSG_LEN_REPR_BYTES, socket.MSG_PEEK)
+        datalength = self._decode_length(datalength)
+        # Read all the datagram, including the first 2 bytes with length of message
+        bytes, addr = self.__read_safely(self.MSG_LEN_REPR_BYTES + datalength)
+        # Don't return the first 2 bytes with length of message
+        return bytes[self.MSG_LEN_REPR_BYTES:], addr
+
+    def __read_safely(self, length, *flags):
+        chunks = []
+        total_bytes_recvd = 0
+        addr = None
+        while total_bytes_recvd < length:
+            bufsize = min(length - total_bytes_recvd, self.DEFAULT_READ_BUFF)
+            chunk, addr = self.sock.recvfrom(bufsize, socket.MSG_PEEK)
+            # the socket is not expecting to receive from someone in particular
+            # or received from the ip expected ([0] to not take in count the port from which the answer came from)
+            if not self.addr or self.addr[0] == addr[0]:
+                chunks.append(chunk)
+                total_bytes_recvd += len(chunk)
+            else:
+                # remove datagram from the udp buffer
+                self.sock.recvfrom(1)
+        # remove datagram from the udp buffer unless flags have MSG_PEEK
+        self.sock.recvfrom(1, *flags)
+        return b''.join(chunks), addr
 
 class ConnectionBroken(RuntimeError):
     pass
