@@ -28,7 +28,7 @@ class SafeSocket(ABC):
     def send(self, data):
         data = self._as_bytes(data)
         datalength = len(data)
-        data = self._encode_length(datalength) + data   # concatenate msg length to start of data
+        data = self._make_header(datalength) + data  # concatenate msg header to start of data
         datalength = len(data)  # update length with added bytes
 
         total_bytes_sent = 0
@@ -71,7 +71,10 @@ class SafeSocket(ABC):
 
     # noinspection PyMethodMayBeStatic
     def _encode_length(self, datalength):
-        return datalength.to_bytes(self.MSG_LEN_REPR_BYTES, byteorder='little', signed=False)
+        return self._encode_as_bytes(datalength, self.MSG_LEN_REPR_BYTES)
+
+    def _encode_as_bytes(self, data, size):
+        return data.to_bytes(size, byteorder='little', signed=False)
 
     # noinspection PyMethodMayBeStatic
     def _decode_length(self, lengthdata):
@@ -127,11 +130,38 @@ class SafeSocketTCP(SafeSocket):
 
         return b''.join(chunks)
 
+    def _make_header(self, datalength):
+        return self._encode_length(datalength) # concatenate msg length to start of data
+
 class SafeSocketUDP(SafeSocket):
+    SEQ_NUM_OFFSET = 2
+    IS_ACK_OFFSET = 1
+    ACK_SEQ_NUM_OFFSET = 0
+    FLAGS_SIZE = 1
+    #                     flags byte
+    # ------------------------------------------------------
+    # | 0 | 0 | 0 | 0 | 0 | seq_num | is_ack | ack_seq_num |
+    # ------------------------------------------------------
+    # | 7 | 6 | 5 | 4 | 3 |    2    |   1    |      0      | [bits]
+
+    FLAGS_POS = 0
+    MSG_LEN_POS = 1
+    HEADER_SIZE = FLAGS_SIZE + SafeSocket.MSG_LEN_REPR_BYTES
+    #             header
+    # -----------------------------
+    # | flags |      msg_len      |
+    # -----------------------------
+    # |   0   |    1    |    2    | [bytes]
 
     def __init__(self):
         super().__init__()
         self.addr = None
+        self.seq_num = 0
+
+    def _make_header(self, datalength, is_ack=False, ack_seq_num = 0):
+        flags = self._encode_as_bytes(self.seq_num << self.SEQ_NUM_OFFSET | is_ack << self.IS_ACK_OFFSET | ack_seq_num << self.ACK_SEQ_NUM_OFFSET, self.FLAGS_SIZE)
+        datalength = self._encode_length(datalength)
+        return flags + datalength
 
     def _make_underlying_socket(self):
         return socket.socket(type=self.UDP)
@@ -148,14 +178,14 @@ class SafeSocketUDP(SafeSocket):
         return self.sock.sendto(data, self.addr)
 
     def recv(self):
-        # Reads first 2 bytes with length of message
+        # Reads header of message
         # socket.MSG_PEEK indicates that the datagram readed should stay in the UDP buffer
-        datalength, addr = self.__read_safely(self.MSG_LEN_REPR_BYTES, socket.MSG_PEEK)
-        datalength = self._decode_length(datalength)
-        # Read all the datagram, including the first 2 bytes with length of message
-        bytes, addr = self.__read_safely(self.MSG_LEN_REPR_BYTES + datalength)
-        # Don't return the first 2 bytes with length of message
-        return bytes[self.MSG_LEN_REPR_BYTES:], addr
+        header, addr = self.__read_safely(self.HEADER_SIZE, socket.MSG_PEEK)
+        datalength = self._decode_length(header[self.MSG_LEN_POS:])
+        # Read all the datagram, including the bytes from header
+        bytes, addr = self.__read_safely(self.HEADER_SIZE + datalength)
+        # Return the data of the datagram
+        return bytes[self.HEADER_SIZE:], addr
 
     def __read_safely(self, length, *flags):
         chunks = []
