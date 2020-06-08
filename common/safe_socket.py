@@ -37,6 +37,7 @@ class SafeSocket(ABC):
             total_bytes_sent += bytes_sent
             self._check_conn(bytes_sent)
 
+        self._recv_ack()
         return total_bytes_sent
 
     def close(self):
@@ -77,7 +78,7 @@ class SafeSocket(ABC):
         return data.to_bytes(size, byteorder='little', signed=False)
 
     # noinspection PyMethodMayBeStatic
-    def _decode_length(self, lengthdata):
+    def _decode_bytes(self, lengthdata):
         return int.from_bytes(lengthdata, byteorder='little', signed=False)
 
     @abstractmethod
@@ -92,8 +93,11 @@ class SafeSocket(ABC):
     def recv(self):
         pass
 
-class SafeSocketTCP(SafeSocket):
+    @abstractmethod
+    def _recv_ack(self):
+        pass
 
+class SafeSocketTCP(SafeSocket):
     def _make_underlying_socket(self):
         return socket.socket(type=self.TCP)
 
@@ -114,7 +118,7 @@ class SafeSocketTCP(SafeSocket):
 
     def recv(self):
         datalength = self.__read_safely(self.MSG_LEN_REPR_BYTES)   # Reads first 2 bytes with length of message
-        datalength = self._decode_length(datalength)
+        datalength = self._decode_bytes(datalength)
         return self.__read_safely(datalength)
 
     def __read_safely(self, length):
@@ -133,11 +137,16 @@ class SafeSocketTCP(SafeSocket):
     def _make_header(self, datalength):
         return self._encode_length(datalength) # concatenate msg length to start of data
 
+    def _recv_ack(self):
+        pass
+
 class SafeSocketUDP(SafeSocket):
     SEQ_NUM_OFFSET = 2
+    SEQ_NUM_MASK = 1 << SEQ_NUM_OFFSET
     IS_ACK_OFFSET = 1
+    IS_ACK_MASK = 1 << IS_ACK_OFFSET
     ACK_SEQ_NUM_OFFSET = 0
-    FLAGS_SIZE = 1
+    ACK_SEQ_NUM_MASK = 1 << ACK_SEQ_NUM_OFFSET
     #                     flags byte
     # ------------------------------------------------------
     # | 0 | 0 | 0 | 0 | 0 | seq_num | is_ack | ack_seq_num |
@@ -145,6 +154,7 @@ class SafeSocketUDP(SafeSocket):
     # | 7 | 6 | 5 | 4 | 3 |    2    |   1    |      0      | [bits]
 
     FLAGS_POS = 0
+    FLAGS_SIZE = 1
     MSG_LEN_POS = 1
     HEADER_SIZE = FLAGS_SIZE + SafeSocket.MSG_LEN_REPR_BYTES
     #             header
@@ -178,14 +188,49 @@ class SafeSocketUDP(SafeSocket):
         return self.sock.sendto(data, self.addr)
 
     def recv(self):
-        # Reads header of message
         # socket.MSG_PEEK indicates that the datagram readed should stay in the UDP buffer
-        header, addr = self.__read_safely(self.HEADER_SIZE, socket.MSG_PEEK)
-        datalength = self._decode_length(header[self.MSG_LEN_POS:])
+        flags, datalength, addr = self.__recv_header(socket.MSG_PEEK)
         # Read all the datagram, including the bytes from header
         bytes, addr = self.__read_safely(self.HEADER_SIZE + datalength)
+        seq_num = self.__get_seq_num(flags)
+        self.__send_ack(addr, seq_num)
         # Return the data of the datagram
         return bytes[self.HEADER_SIZE:], addr
+
+    def __recv_header(self, *flags):
+        # Reads header of message
+        header, addr = self.__read_safely(self.HEADER_SIZE, *flags)
+        flags = self._decode_bytes(header[self.FLAGS_POS:self.FLAGS_POS + self.FLAGS_SIZE + 1])
+        datalength = self._decode_bytes(header[self.MSG_LEN_POS:])
+        return flags, datalength, addr
+
+    def _recv_ack(self):
+        flags, datalength, addr = self.__recv_header()
+        is_ack = self.__get_is_ack(flags)
+        ack_seq_num = self.__get_ack_seq_num(flags)
+        if is_ack:
+            if ack_seq_num == self.seq_num:
+                self.seq_num = (not self.seq_num)
+            else:
+                # retransmitir
+                pass
+        else:
+            # not ack, wait again for an ack
+            # this make the channel half duplex, i can't receive until i get an ack
+            self._recv_ack()
+
+    def __send_ack(self, addr, seq_num):
+        header = self._make_header(0, True, seq_num)
+        self.sock.sendto(header, addr)
+
+    def __get_seq_num(self, flags):
+        return flags & self.SEQ_NUM_MASK
+
+    def __get_is_ack(self, flags):
+        return flags & self.IS_ACK_MASK
+
+    def __get_ack_seq_num(self, flags):
+        return flags & self.ACK_SEQ_NUM_MASK
 
     def __read_safely(self, length, *flags):
         chunks = []
