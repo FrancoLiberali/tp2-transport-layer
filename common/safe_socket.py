@@ -169,7 +169,7 @@ class SafeSocketUDP(SafeSocket):
         super().__init__()
         self.addr = None
         self.seq_num = 0
-        self.last_acked = None
+        self.last_acked = {}
 
     def _make_header(self, datalength, is_ack=0, ack_seq_num = 0):
         flags = self._encode_as_bytes(self.seq_num << self.SEQ_NUM_OFFSET | is_ack << self.IS_ACK_OFFSET | ack_seq_num << self.ACK_SEQ_NUM_OFFSET, self.FLAGS_SIZE)
@@ -196,16 +196,19 @@ class SafeSocketUDP(SafeSocket):
         # Read all the datagram, including the bytes from header
         data, addr = self.__read_safely(self.HEADER_SIZE + datalength)
         seq_num = self.__get_seq_num(flags)
+        last_acked = self.__get_last_acked(addr)
         # if it is a new datagram
-        if seq_num != self.last_acked:
+        if seq_num != last_acked:
             self.__send_ack(addr, seq_num)
-            self.last_acked = seq_num
             # Return the data of the datagram
             return data[self.HEADER_SIZE:], addr
         # it is a retransmition, my last ack went lost
         # send the last_acked again and wait until receiving the correct datagram
-        self.__send_ack(addr, self.last_acked)
+        self.__send_ack(addr, last_acked)
         return self.recv()
+
+    def __get_last_acked(self, addr):
+        return self.last_acked.get(addr, None)
 
     def __recv_header(self, *flags):
         # Reads header of message
@@ -236,6 +239,7 @@ class SafeSocketUDP(SafeSocket):
     def __send_ack(self, addr, seq_num):
         header = self._make_header(0, 1, seq_num)
         self.sock.sendto(header, addr)
+        self.last_acked[addr] = seq_num
 
     def __get_seq_num(self, flags):
         return (flags & self.SEQ_NUM_MASK) >> self.SEQ_NUM_OFFSET
