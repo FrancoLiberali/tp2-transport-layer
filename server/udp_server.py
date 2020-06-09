@@ -14,16 +14,16 @@ class UDPServer(Server):
         print(f'\nUDPServer started\nAddress: {self.server_addr}\nStorageDir: {self.storage_path})')
 
         while True:
-            bytes, addr = self.sock.recv()
+            data, addr = self.sock.recv()
             print(f'Recived from -> address: {addr}')
             addr_socket = self.queues.get(addr, None)
             if not addr_socket:
                 addr_queue = Queue()
-                conn = self.sock.accept(addr, self.server_addr)
+                conn = self.sock.accept(addr)
                 addr_socket = UDPThreadSocket(conn, addr_queue)
                 self.queues[addr] = addr_socket
-                cli_req = bytes.decode()
+                cli_req = data.decode()
                 threaded_op = self.operations_chain.delegate(addr_socket, addr, self.storage_path, cli_req)
                 threaded_op and self.threads.append(threaded_op)
             else:
-                addr_socket.put(bytes)
+                addr_socket.put(data)

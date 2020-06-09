@@ -52,13 +52,13 @@ class FileUpload(ABC):
             self.sock.close()
 
     @abstractmethod
-    def _wait_for_server_signal(self, data):
+    def _wait_for_server_signal(self):
         pass
 
     @abstractmethod
-    def _wait_for_server_bytes(self, data):
+    def _wait_for_server_bytes(self):
         pass
 
     @abstractmethod
-    def _establish_connection(self, data):
+    def _establish_connection(self):
         pass

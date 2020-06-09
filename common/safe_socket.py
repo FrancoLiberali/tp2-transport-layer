@@ -176,7 +176,8 @@ class SafeSocketUDP(SafeSocket):
     def _make_underlying_socket(self):
         return socket.socket(type=self.UDP)
 
-    def accept(self, addr, server_addr):
+    # noinspection PyMethodMayBeStatic
+    def accept(self, addr):
         safe_conn = SafeSocket.socket(sock_type=SafeSocket.UDP)
         safe_conn.addr = addr
         return safe_conn
@@ -188,14 +189,13 @@ class SafeSocketUDP(SafeSocket):
         return self.sock.sendto(data, self.addr)
 
     def recv(self):
-        # socket.MSG_PEEK indicates that the datagram readed should stay in the UDP buffer
         flags, datalength, addr = self.__recv_header(socket.MSG_PEEK)
         # Read all the datagram, including the bytes from header
-        bytes, addr = self.__read_safely(self.HEADER_SIZE + datalength)
+        data, addr = self.__read_safely(self.HEADER_SIZE + datalength)
         seq_num = self.__get_seq_num(flags)
         self.__send_ack(addr, seq_num)
         # Return the data of the datagram
-        return bytes[self.HEADER_SIZE:], addr
+        return data[self.HEADER_SIZE:], addr
 
     def __recv_header(self, *flags):
         # Reads header of message
@@ -237,8 +237,7 @@ class SafeSocketUDP(SafeSocket):
         total_bytes_recvd = 0
         addr = None
         while total_bytes_recvd < length:
-            bufsize = min(length - total_bytes_recvd, self.DEFAULT_READ_BUFF)
-            chunk, addr = self.sock.recvfrom(bufsize, socket.MSG_PEEK)
+            chunk, addr = self.sock.recvfrom(length, socket.MSG_PEEK)
             # the socket is not expecting to receive from someone in particular
             # or received from the ip expected ([0] to not take in count the port from which the answer came from)
             if not self.addr or self.addr[0] == addr[0]:
