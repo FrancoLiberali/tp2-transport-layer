@@ -1,8 +1,7 @@
 from queue import Empty
-from common.safe_socket import ConnectionBroken
+from common.safe_socket import ConnectionBroken, SafeSocketUDP
 
 class UDPThreadSocket():
-    RECV_TIMEOUT = 10
     def __init__(self, sock, queue, queues, recv_sock):
         self.sock = sock
         self.queue = queue
@@ -17,7 +16,7 @@ class UDPThreadSocket():
 
     def recv(self):
         try:
-            return self.queue.get(timeout=self.RECV_TIMEOUT)
+            return self.queue.get(timeout=SafeSocketUDP.DEFAULT_RECV_TIMEOUT)
         except Empty:
             raise ConnectionBroken("Client stoped sending")
 
