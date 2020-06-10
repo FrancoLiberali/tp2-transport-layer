@@ -31,7 +31,9 @@ class SafeSocket(ABC):
         data = self._make_header(datalength) + data  # concatenate msg header to start of data
         datalength = len(data)  # update length with added bytes
 
-        return self._send_safe(datalength, data)
+        bytes_sent = self._send_safe(datalength, data)
+        self._recv_ack(datalength, data)
+        return bytes_sent
 
     def _send_safe(self, datalength, data):
         total_bytes_sent = 0
@@ -39,7 +41,6 @@ class SafeSocket(ABC):
             bytes_sent = self._sock_send(data[total_bytes_sent:])
             total_bytes_sent += bytes_sent
             self._check_conn(bytes_sent)
-        self._recv_ack(datalength, data)
         return total_bytes_sent
 
     def close(self):
@@ -164,11 +165,14 @@ class SafeSocketUDP(SafeSocket):
     # | flags |      msg_len      |
     # -----------------------------
     # |   0   |    1    |    2    | [bytes]
+    MAX_RETRANSMITIONS = 25
+    RTO = 0.250
 
     def __init__(self):
         super().__init__()
         self.addr = None
         self.seq_num = 0
+        # TODO ojo aca tambien si ya me comunique con ese cliente, limpiar frente a cierre de conexion
         self.last_acked = {}
 
     def _make_header(self, datalength, is_ack=0, ack_seq_num = 0):
@@ -218,23 +222,21 @@ class SafeSocketUDP(SafeSocket):
         return flags, datalength, addr
 
     def _recv_ack(self, datalength, data):
-        # TODO poner un limite de retransmiciones por si se pierde la conexion
-        # o hacer un fin mejor, o ambas por si tiran kill
-        self.sock.settimeout(0.250)
-        try:
-            flags, datalength, addr = self.__recv_header()
-            is_ack = self.__get_is_ack(flags)
-            ack_seq_num = self.__get_ack_seq_num(flags)
-            if is_ack and ack_seq_num == self.seq_num:
-                self.seq_num = 1 - self.seq_num
-                self.sock.settimeout(None)
-            else:
-                # not ack, wait again for an ack
+        for i in range(self.MAX_RETRANSMITIONS):
+            self.sock.settimeout(self.RTO)
+            try:
+                flags, datalength, addr = self.__recv_header()
+                is_ack = self.__get_is_ack(flags)
+                ack_seq_num = self.__get_ack_seq_num(flags)
                 # this make the channel half duplex, i can't receive until i get an ack
-                # or the ack is not the correct
-                self._recv_ack(datalength, data)
-        except socket.timeout:
-            self._send_safe(datalength, data)
+                if is_ack and ack_seq_num == self.seq_num:
+                    self.seq_num = 1 - self.seq_num
+                    self.sock.settimeout(None)
+                    return
+            except socket.timeout:
+                # retransmition
+                self._send_safe(datalength, data)
+        raise ConnectionBroken('Destiny not receiving datagrams')
 
     def __send_ack(self, addr, seq_num):
         header = self._make_header(0, 1, seq_num)
