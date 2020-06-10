@@ -167,6 +167,7 @@ class SafeSocketUDP(SafeSocket):
     # |   0   |    1    |    2    | [bytes]
     MAX_RETRANSMITIONS = 25
     RTO = 0.250
+    DEFAULT_RECV_TIMEOUT = 10
 
     def __init__(self):
         super().__init__()
@@ -194,21 +195,26 @@ class SafeSocketUDP(SafeSocket):
     def _sock_send(self, data):
         return self.sock.sendto(data, self.addr)
 
-    def recv(self):
-        flags, datalength, addr = self.__recv_header(socket.MSG_PEEK)
-        # Read all the datagram, including the bytes from header
-        data, addr = self.__read_safely(self.HEADER_SIZE + datalength)
-        seq_num = self.__get_seq_num(flags)
-        last_acked = self.__get_last_acked(addr)
-        # if it is a new datagram
-        if seq_num != last_acked:
-            self.__send_ack(addr, seq_num)
-            # Return the data of the datagram
-            return data[self.HEADER_SIZE:], addr
-        # it is a retransmition, my last ack went lost
-        # send the last_acked again and wait until receiving the correct datagram
-        self.__send_ack(addr, last_acked)
-        return self.recv()
+    def recv(self, timeout = DEFAULT_RECV_TIMEOUT):
+        try:
+            self.sock.settimeout(timeout)
+            flags, datalength, addr = self.__recv_header(socket.MSG_PEEK)
+            # Read all the datagram, including the bytes from header
+            data, addr = self.__read_safely(self.HEADER_SIZE + datalength)
+            seq_num = self.__get_seq_num(flags)
+            last_acked = self.__get_last_acked(addr)
+            # if it is a new datagram
+            if seq_num != last_acked:
+                self.sock.settimeout(None)
+                self.__send_ack(addr, seq_num)
+                # Return the data of the datagram
+                return data[self.HEADER_SIZE:], addr
+            # it is a retransmition, my last ack went lost
+            # send the last_acked again and wait until receiving the correct datagram
+            self.__send_ack(addr, last_acked)
+            return self.recv()
+        except socket.timeout:
+            raise ConnectionBroken('Client stoped sending')
 
     def close_connection(self, addr):
         self.last_acked.pop(addr, None)

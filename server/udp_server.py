@@ -14,7 +14,7 @@ class UDPServer(Server):
         print(f'\nUDPServer started\nAddress: {self.server_addr}\nStorageDir: {self.storage_path})')
 
         while True:
-            data, addr = self.sock.recv()
+            data, addr = self.sock.recv(None)
             print(f'Recived from -> address: {addr}')
             addr_socket = self.queues.get(addr, None)
             if not addr_socket:
