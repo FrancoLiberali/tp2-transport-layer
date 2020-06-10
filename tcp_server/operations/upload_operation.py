@@ -33,9 +33,17 @@ class UploadOperation(threading.Thread):
 
             print(f'SAVED FILE -> {self.file_save_name}')
             print(f'Path: {self.file_path}, {bytes_received} of {self.file_size} received.')
-            self.conn.send(str(bytes_received))
+            self.send_end(str(bytes_received))
         except ConnectionBroken:
             os.path.isfile(self.file_path) and os.remove(self.file_path)
             print(f"Upload cancelled: cleaned up '{self.file_save_name}'")
         finally:
             self.conn.close()
+
+    def send_end(self, bytes_received):
+        try:
+            self.conn.send(str(bytes_received))
+        except ConnectionBroken:
+            # this is the end at application level
+            # i dont want to delete the uploaded file if the client lost connection at this point
+            pass
