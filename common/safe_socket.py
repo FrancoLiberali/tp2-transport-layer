@@ -28,15 +28,19 @@ class SafeSocket(ABC):
     def send(self, data):
         data = self._as_bytes(data)
         datalength = len(data)
-        data = self._encode_length(datalength) + data   # concatenate msg length to start of data
+        data = self._make_header(datalength) + data  # concatenate msg header to start of data
         datalength = len(data)  # update length with added bytes
 
+        bytes_sent = self._send_safe(datalength, data)
+        self._recv_ack(datalength, data)
+        return bytes_sent
+
+    def _send_safe(self, datalength, data):
         total_bytes_sent = 0
         while total_bytes_sent < datalength:
             bytes_sent = self._sock_send(data[total_bytes_sent:])
             total_bytes_sent += bytes_sent
             self._check_conn(bytes_sent)
-
         return total_bytes_sent
 
     def close(self):
@@ -71,10 +75,13 @@ class SafeSocket(ABC):
 
     # noinspection PyMethodMayBeStatic
     def _encode_length(self, datalength):
-        return datalength.to_bytes(self.MSG_LEN_REPR_BYTES, byteorder='little', signed=False)
+        return self._encode_as_bytes(datalength, self.MSG_LEN_REPR_BYTES)
+
+    def _encode_as_bytes(self, data, size):
+        return data.to_bytes(size, byteorder='little', signed=False)
 
     # noinspection PyMethodMayBeStatic
-    def _decode_length(self, lengthdata):
+    def _decode_bytes(self, lengthdata):
         return int.from_bytes(lengthdata, byteorder='little', signed=False)
 
     @abstractmethod
@@ -89,8 +96,11 @@ class SafeSocket(ABC):
     def recv(self):
         pass
 
-class SafeSocketTCP(SafeSocket):
+    @abstractmethod
+    def _recv_ack(self, datalength, data):
+        pass
 
+class SafeSocketTCP(SafeSocket):
     def _make_underlying_socket(self):
         return socket.socket(type=self.TCP)
 
@@ -111,7 +121,7 @@ class SafeSocketTCP(SafeSocket):
 
     def recv(self):
         datalength = self.__read_safely(self.MSG_LEN_REPR_BYTES)   # Reads first 2 bytes with length of message
-        datalength = self._decode_length(datalength)
+        datalength = self._decode_bytes(datalength)
         return self.__read_safely(datalength)
 
     def __read_safely(self, length):
@@ -127,11 +137,47 @@ class SafeSocketTCP(SafeSocket):
 
         return b''.join(chunks)
 
+    def _make_header(self, datalength):
+        return self._encode_length(datalength) # concatenate msg length to start of data
+
+    def _recv_ack(self, datalength, data):
+        pass
+
 class SafeSocketUDP(SafeSocket):
+    SEQ_NUM_OFFSET = 2
+    SEQ_NUM_MASK = 1 << SEQ_NUM_OFFSET
+    IS_ACK_OFFSET = 1
+    IS_ACK_MASK = 1 << IS_ACK_OFFSET
+    ACK_SEQ_NUM_OFFSET = 0
+    ACK_SEQ_NUM_MASK = 1 << ACK_SEQ_NUM_OFFSET
+    #                     flags byte
+    # ------------------------------------------------------
+    # | 0 | 0 | 0 | 0 | 0 | seq_num | is_ack | ack_seq_num |
+    # ------------------------------------------------------
+    # | 7 | 6 | 5 | 4 | 3 |    2    |   1    |      0      | [bits]
+
+    FLAGS_POS = 0
+    FLAGS_SIZE = 1
+    MSG_LEN_POS = 1
+    HEADER_SIZE = FLAGS_SIZE + SafeSocket.MSG_LEN_REPR_BYTES
+    #             header
+    # -----------------------------
+    # | flags |      msg_len      |
+    # -----------------------------
+    # |   0   |    1    |    2    | [bytes]
+    MAX_RETRANSMITIONS = 25
+    RTO = 0.250
 
     def __init__(self):
         super().__init__()
         self.addr = None
+        self.seq_num = 0
+        self.last_acked = {}
+
+    def _make_header(self, datalength, is_ack=0, ack_seq_num = 0):
+        flags = self._encode_as_bytes(self.seq_num << self.SEQ_NUM_OFFSET | is_ack << self.IS_ACK_OFFSET | ack_seq_num << self.ACK_SEQ_NUM_OFFSET, self.FLAGS_SIZE)
+        datalength = self._encode_length(datalength)
+        return flags + datalength
 
     def _make_underlying_socket(self):
         return socket.socket(type=self.UDP)
@@ -149,14 +195,64 @@ class SafeSocketUDP(SafeSocket):
         return self.sock.sendto(data, self.addr)
 
     def recv(self):
-        # Reads first 2 bytes with length of message
-        # socket.MSG_PEEK indicates that the datagram readed should stay in the UDP buffer
-        datalength, addr = self.__read_safely(self.MSG_LEN_REPR_BYTES, socket.MSG_PEEK)
-        datalength = self._decode_length(datalength)
-        # Read all the datagram, including the first 2 bytes with length of message
-        data, addr = self.__read_safely(self.MSG_LEN_REPR_BYTES + datalength)
-        # Don't return the first 2 bytes with length of message
-        return data[self.MSG_LEN_REPR_BYTES:], addr
+        flags, datalength, addr = self.__recv_header(socket.MSG_PEEK)
+        # Read all the datagram, including the bytes from header
+        data, addr = self.__read_safely(self.HEADER_SIZE + datalength)
+        seq_num = self.__get_seq_num(flags)
+        last_acked = self.__get_last_acked(addr)
+        # if it is a new datagram
+        if seq_num != last_acked:
+            self.__send_ack(addr, seq_num)
+            # Return the data of the datagram
+            return data[self.HEADER_SIZE:], addr
+        # it is a retransmition, my last ack went lost
+        # send the last_acked again and wait until receiving the correct datagram
+        self.__send_ack(addr, last_acked)
+        return self.recv()
+
+    def close_connection(self, addr):
+        self.last_acked.pop(addr, None)
+
+    def __get_last_acked(self, addr):
+        return self.last_acked.get(addr, None)
+
+    def __recv_header(self, *flags):
+        # Reads header of message
+        header, addr = self.__read_safely(self.HEADER_SIZE, *flags)
+        flags = self._decode_bytes(header[self.FLAGS_POS:self.FLAGS_POS + self.FLAGS_SIZE + 1])
+        datalength = self._decode_bytes(header[self.MSG_LEN_POS:])
+        return flags, datalength, addr
+
+    def _recv_ack(self, datalength, data):
+        for i in range(self.MAX_RETRANSMITIONS):
+            self.sock.settimeout(self.RTO)
+            try:
+                flags, datalength, addr = self.__recv_header()
+                is_ack = self.__get_is_ack(flags)
+                ack_seq_num = self.__get_ack_seq_num(flags)
+                # this make the channel half duplex, i can't receive until i get an ack
+                if is_ack and ack_seq_num == self.seq_num:
+                    self.seq_num = 1 - self.seq_num
+                    self.sock.settimeout(None)
+                    return
+            except socket.timeout:
+                # retransmition
+                self._send_safe(datalength, data)
+        raise ConnectionBroken('Destiny not receiving datagrams')
+
+    def __send_ack(self, addr, seq_num):
+        header = self._make_header(0, 1, seq_num)
+        self.sock.sendto(header, addr)
+        self.last_acked[addr] = seq_num
+
+    def __get_seq_num(self, flags):
+        return (flags & self.SEQ_NUM_MASK) >> self.SEQ_NUM_OFFSET
+
+    def __get_is_ack(self, flags):
+        return (flags & self.IS_ACK_MASK) >> self.IS_ACK_OFFSET
+
+    def __get_ack_seq_num(self, flags):
+        return (flags & self.ACK_SEQ_NUM_MASK) >> self.ACK_SEQ_NUM_OFFSET
 
     def __read_safely(self, length, *flags):
         chunks = []
