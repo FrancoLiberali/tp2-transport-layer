@@ -18,10 +18,9 @@ class UDPServer(Server):
             print(f'Recived from -> address: {addr}')
             addr_socket = self.queues.get(addr, None)
             if not addr_socket:
-                # TODO ojo aca, como no hay cierre de conexion si me vuelve a hablar el mismo otra vez no vengo aca
                 addr_queue = Queue()
                 conn = self.sock.accept(addr)
-                addr_socket = UDPThreadSocket(conn, addr_queue)
+                addr_socket = UDPThreadSocket(conn, addr_queue, self.queues, self.sock)
                 self.queues[addr] = addr_socket
                 cli_req = data.decode()
                 threaded_op = self.operations_chain.delegate(addr_socket, addr, self.storage_path, cli_req)

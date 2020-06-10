@@ -172,7 +172,6 @@ class SafeSocketUDP(SafeSocket):
         super().__init__()
         self.addr = None
         self.seq_num = 0
-        # TODO ojo aca tambien si ya me comunique con ese cliente, limpiar frente a cierre de conexion
         self.last_acked = {}
 
     def _make_header(self, datalength, is_ack=0, ack_seq_num = 0):
@@ -210,6 +209,9 @@ class SafeSocketUDP(SafeSocket):
         # send the last_acked again and wait until receiving the correct datagram
         self.__send_ack(addr, last_acked)
         return self.recv()
+
+    def close_connection(self, addr):
+        self.last_acked.pop(addr, None)
 
     def __get_last_acked(self, addr):
         return self.last_acked.get(addr, None)
