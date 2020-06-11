@@ -1,8 +1,11 @@
 import os
+from abc import ABC, abstractmethod
 from common.operation_codes import DOWNLOAD
 from common.safe_socket import SafeSocket, ConnectionBroken
 
-class FileDownload:
+class FileDownload(ABC):
+    FILE_NOT_FOUND_CODE = -1
+
     def __init__(self, server_addr, file_name, dest):
         self.OP_CODE = DOWNLOAD
         self.delim = '\0'
@@ -21,7 +24,7 @@ class FileDownload:
         except ConnectionBroken as e:
             raise RuntimeError(f'Error in connection: {str(e)}')
         finally:
-            self.__close_connection()
+            self._close_connection()
 
     def __send_transfer_info(self):
         fields = [self.OP_CODE, self.name_in_server]
@@ -29,8 +32,10 @@ class FileDownload:
         self.sock.send(payload)
 
     def __wait_for_server_signal(self):
-        file_size = self.sock.recv().decode()
+        file_size = self._recv_data().decode()
         self.file_size = int(file_size)
+        if self.file_size == self.FILE_NOT_FOUND_CODE:
+            raise RuntimeError(f"File '{self.name_in_server}' not found in server")
 
     def __transfer(self):
         bytes_received = 0
@@ -38,26 +43,27 @@ class FileDownload:
         try:
             with open(self.file_path, 'wb') as f:
                 while bytes_received < self.file_size:
-                    chunk = self.sock.recv()
+                    chunk = self._recv_data()
                     bytes_received += len(chunk)
                     f.write(chunk)
 
             print(f'Received {bytes_received} of {self.file_size} bytes successfully.')
-        except ConnectionBroken:
+        except ConnectionBroken as e:
+            print(f'Error in connection: {str(e)}')
             os.path.isfile(self.file_path) and os.remove(self.file_path)
         except FileNotFoundError as e:
             raise RuntimeError(f"Directory '{self.file_path}' not found")
         finally:
-            self.__close_connection()
+            self._close_connection()
 
-    def __close_connection(self):
+    def _close_connection(self):
         if self.sock is not None:
             self.sock.close()
 
+    @abstractmethod
     def _establish_connection(self):
-        try:
-            self.sock = SafeSocket.socket()
-            self.sock.connect(self.server_addr)
-        except OSError as e:
-            self.__close_connection()
-            raise RuntimeError(f'Error establishing connection: {str(e)}')
+        pass
+
+    @abstractmethod
+    def _recv_data(self):
+        pass

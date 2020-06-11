@@ -1,7 +1,7 @@
 from common.safe_socket import SafeSocket
-from client.file_upload import FileUpload
+from client.file_download import FileDownload
 
-class TCPFileUpload(FileUpload):
+class TCPFileDownload(FileDownload):
     def _establish_connection(self):
         try:
             self.sock = SafeSocket.socket()
