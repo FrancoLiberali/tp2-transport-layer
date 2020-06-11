@@ -212,7 +212,7 @@ class SafeSocketUDP(SafeSocket):
             # it is a retransmition, my last ack went lost
             # send the last_acked again and wait until receiving the correct datagram
             self.__send_ack(addr, last_acked)
-            return self.recv()
+            return self.recv(timeout)
         except socket.timeout:
             raise ConnectionBroken('Client stoped sending')
 
