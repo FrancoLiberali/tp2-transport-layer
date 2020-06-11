@@ -33,7 +33,7 @@ class DownloadOperation(threading.Thread):
                     self.conn.send(chunk)
                     bytes_sent += len(chunk)
 
-        except ConnectionBroken:
+        except (ConnectionBroken, ConnectionResetError, BrokenPipeError):
             print(f"Download cancelled: '{self.file_name}'")
         except (OSError, FileNotFoundError):
             self.__send_not_found()
