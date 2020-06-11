@@ -1,7 +1,7 @@
 import os
 from abc import ABC, abstractmethod
 from common.operation_codes import UPLOAD
-from common.safe_socket import SafeSocket, ConnectionBroken
+from common.safe_socket import ConnectionBroken
 
 class FileUpload(ABC):
     def __init__(self, server_addr, src, name):
