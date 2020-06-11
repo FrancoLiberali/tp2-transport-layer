@@ -48,7 +48,8 @@ class FileDownload(ABC):
                     f.write(chunk)
 
             print(f'Received {bytes_received} of {self.file_size} bytes successfully.')
-        except ConnectionBroken:
+        except ConnectionBroken as e:
+            print(f'Error in connection: {str(e)}')
             os.path.isfile(self.file_path) and os.remove(self.file_path)
         except FileNotFoundError as e:
             raise RuntimeError(f"Directory '{self.file_path}' not found")

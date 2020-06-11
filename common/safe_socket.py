@@ -214,7 +214,7 @@ class SafeSocketUDP(SafeSocket):
             self.__send_ack(addr, last_acked)
             return self.recv(timeout)
         except socket.timeout:
-            raise ConnectionBroken('Client stoped sending')
+            raise ConnectionBroken('The other side is not sending')
 
     def close_connection(self, addr):
         self.last_acked.pop(addr, None)
