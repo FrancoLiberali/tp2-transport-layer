@@ -24,7 +24,7 @@ class FileUpload(ABC):
         except ConnectionBroken as e:
             raise RuntimeError(f'Error in connection: {str(e)}')
         finally:
-            self.__close_connection()
+            self._close_connection()
 
     def __send_transfer_info(self):
         fields = [self.OP_CODE, self.save_name, self.file_size]
@@ -56,7 +56,7 @@ class FileUpload(ABC):
         except OSError as e:
             raise RuntimeError(f'Error opening file: {str(e)}')
 
-    def __close_connection(self):
+    def _close_connection(self):
         if self.sock is not None:
             self.sock.close()
 
