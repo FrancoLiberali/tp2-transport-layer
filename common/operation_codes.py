@@ -1,1 +1,2 @@
 UPLOAD = 'upload'
+DOWNLOAD = 'download'

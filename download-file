@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import argparse
-from tcp_client.download_file import download_file as download_file_tcp
-from udp_client.download_file import download_file as download_file_udp
+from client.download_file import download_file
+from client.file_download import FileDownload
+# from client.udp_file_download import UDPFileDownload
 
 
 def parse_arguments():
@@ -22,9 +23,9 @@ def main():
     server_address = (args.server_host, args.server_port)
 
     if args.protocol == "tcp":
-        download_file_tcp(server_address, args.name, args.dst)
+        download_file(server_address, args.name, args.dst, FileDownload)
     elif args.protocol == "udp":
-        download_file_udp(server_address, args.name, args.dst)
+        download_file(server_address, args.name, args.dst, None)
     else:
         raise Exception("protocolo invalido")
 
